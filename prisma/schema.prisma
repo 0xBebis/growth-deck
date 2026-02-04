@@ -1,0 +1,677 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  CONTRIBUTOR
+}
+
+enum Platform {
+  X
+  LINKEDIN
+  REDDIT
+  HN
+}
+
+enum AccountType {
+  COMPANY
+  PERSONAL
+}
+
+enum KeywordCategory {
+  PRODUCT
+  PAIN_POINT
+  COMPETITOR
+  RESEARCH
+}
+
+enum IntentType {
+  QUESTION
+  COMPLAINT
+  DISCUSSION
+  SHOWCASE
+}
+
+enum AudienceType {
+  TRADER
+  RESEARCHER
+  HYBRID
+}
+
+enum PostStatus {
+  NEW
+  QUEUED
+  REPLIED
+  DISMISSED
+}
+
+enum ReplyStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  FAILED
+}
+
+enum CalendarStatus {
+  SUGGESTED
+  DRAFT
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  SKIPPED
+}
+
+enum ContentType {
+  NEWS_REACTION
+  THREAD
+  ORIGINAL
+  ENGAGEMENT
+  RECURRING
+}
+
+enum LlmTask {
+  CLASSIFY
+  DRAFT
+  SUMMARIZE
+  CALENDAR
+}
+
+// ─── NextAuth Models ────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(CONTRIBUTOR)
+
+  accounts        Account[]
+  sessions        Session[]
+  replies         Reply[]
+  calendarEntries CalendarEntry[]
+  platformAccounts PlatformAccount[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Application Models ─────────────────────────────
+
+model CompanyProfile {
+  id                 String @id @default(cuid())
+  companyName        String @default("My Company")
+  productName        String @default("My Product")
+  productDescription String @default("") @db.Text
+  brandVoice         String @default("") @db.Text
+  targetAudiences    Json   @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PlatformAccount {
+  id              String      @id @default(cuid())
+  platform        Platform
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id])
+  accountType     AccountType
+  displayName     String
+  accountHandle   String?
+  credentials     String?     @db.Text
+  isActive        Boolean     @default(true)
+  isDefault       Boolean     @default(false)
+  lastFetchedAt   DateTime?
+  fetchIntervalMin Int        @default(15)
+
+  replies         Reply[]
+  calendarEntries CalendarEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Keyword {
+  id           String          @id @default(cuid())
+  phrase       String
+  category     KeywordCategory
+  isActive     Boolean         @default(true)
+  postsMatched Int             @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DiscoveredPost {
+  id                  String       @id @default(cuid())
+  platform            Platform
+  externalId          String
+  externalUrl         String
+  authorName          String?
+  authorHandle        String?
+  content             String       @db.Text
+  threadContext        String?      @db.Text
+  relevanceScore      Int?
+  intentType          IntentType?
+  audienceType        AudienceType?
+  status              PostStatus   @default(NEW)
+  classificationModel String?
+  classificationCost  Float?
+  matchedKeywords     String?
+
+  discoveredAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  replies Reply[]
+
+  @@unique([platform, externalId])
+  @@index([status])
+  @@index([relevanceScore])
+  @@index([discoveredAt])
+  @@index([status, relevanceScore])
+}
+
+model Reply {
+  id                String          @id @default(cuid())
+  discoveredPostId  String
+  discoveredPost    DiscoveredPost  @relation(fields: [discoveredPostId], references: [id], onDelete: Cascade)
+  authorId          String
+  author            User            @relation(fields: [authorId], references: [id])
+  platformAccountId String?
+  platformAccount   PlatformAccount? @relation(fields: [platformAccountId], references: [id])
+  draftContent      String          @db.Text
+  finalContent      String?         @db.Text
+  status            ReplyStatus     @default(DRAFT)
+  scheduledFor      DateTime?
+  sentAt            DateTime?
+  externalReplyId   String?
+  draftModel        String?
+  draftCost         Float?
+  platform          Platform
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([discoveredPostId])
+  @@index([authorId])
+  @@index([status, createdAt])
+}
+
+model CalendarEntry {
+  id                String          @id @default(cuid())
+  newsItemId        String?
+  authorId          String
+  author            User            @relation(fields: [authorId], references: [id])
+  platform          Platform
+  platformAccountId String?
+  platformAccount   PlatformAccount? @relation(fields: [platformAccountId], references: [id])
+  contentType       ContentType
+  title             String
+  draftContent      String?         @db.Text
+  finalContent      String?         @db.Text
+  status            CalendarStatus  @default(SUGGESTED)
+  scheduledFor      DateTime?
+  publishedAt       DateTime?
+  autoPublish       Boolean         @default(false)
+  recurringSeries   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LlmConfig {
+  id                       String  @id @default(cuid())
+  openRouterApiKey         String? @db.Text
+  defaultModelId           String  @default("moonshotai/kimi-k2.5")
+  classificationTemp       Float   @default(0.2)
+  draftingTemp             Float   @default(0.6)
+  summarizationTemp        Float   @default(0.3)
+  calendarTemp             Float   @default(0.7)
+  monthlyBudgetLimit       Float?
+  budgetAlertThreshold     Float   @default(0.8)
+  budgetHardStop           Boolean @default(true)
+  budgetHardStopExemptions Json    @default("[\"draft\"]")
+}
+
+model SlackConfig {
+  id                       String  @id @default(cuid())
+  webhookUrl               String? @db.Text
+  alertChannelName         String  @default("#growth-alerts")
+  metricsChannelName       String  @default("#growth-metrics")
+  highPriorityThreshold    Int     @default(80)
+  enableHighPriorityAlerts Boolean @default(true)
+  enableDailySummary       Boolean @default(true)
+  enableWeeklyRecap        Boolean @default(true)
+  enableQueueAlerts        Boolean @default(true)
+  enableCalendarReminders  Boolean @default(true)
+}
+
+model LlmUsageLog {
+  id                String   @id @default(cuid())
+  task              LlmTask
+  modelId           String
+  inputTokens       Int
+  outputTokens      Int
+  costUsd           Float
+  relatedEntityType String?
+  relatedEntityId   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([task])
+}
+
+model PlaybookEntry {
+  id              String   @id @default(cuid())
+  platform        Platform @unique
+  platformUrl     String
+  accountUrl      String?
+  postingCadence  String   @db.Text
+  bestTimes       String?
+  styleGuide      String   @db.Text
+  dos             String   @db.Text
+  donts           String   @db.Text
+  additionalNotes String?  @db.Text
+  // AI prompt fields
+  maxLength       Int      @default(280)
+  tone            String   @default("casual, authentic")
+  goodExamples    Json     @default("[]") // Array of example strings
+  badExamples     Json     @default("[]") // Array of example strings
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// AI Writing Rules - editable banned words, phrases, and guidelines
+model WritingRules {
+  id             String   @id @default(cuid())
+  // Singleton - only one record
+  bannedWords    Json     @default("[]") // Array of words to avoid
+  bannedPhrases  Json     @default("[]") // Array of phrases to avoid
+  writingTips    Json     @default("[]") // Array of {tip, good, bad} objects
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Analytics & Engagement Tracking ─────────────────
+
+enum EngagementType {
+  VIEW
+  CLICK
+  UPVOTE
+  REPLY
+  SHARE
+  FOLLOW
+  CONVERSION
+}
+
+model EngagementEvent {
+  id              String         @id @default(cuid())
+  replyId         String?
+  platform        Platform
+  eventType       EngagementType
+  externalPostId  String?
+  metadata        Json?          // Additional event data
+
+  createdAt DateTime @default(now())
+
+  @@index([replyId])
+  @@index([platform])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+model ConversionEvent {
+  id              String   @id @default(cuid())
+  replyId         String?
+  leadId          String?
+  lead            Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  source          String   // utm_source or referrer
+  medium          String?  // utm_medium
+  campaign        String?  // utm_campaign
+  landingPage     String?
+  conversionType  String   // signup, demo_request, purchase, etc.
+  conversionValue Float?   // monetary value if applicable
+
+  createdAt DateTime @default(now())
+
+  @@index([replyId])
+  @@index([leadId])
+  @@index([createdAt])
+  @@index([conversionType])
+}
+
+model AnalyticsSnapshot {
+  id                    String   @id @default(cuid())
+  date                  DateTime @db.Date
+  platform              Platform?
+  totalPosts            Int      @default(0)
+  totalReplies          Int      @default(0)
+  totalEngagements      Int      @default(0)
+  totalConversions      Int      @default(0)
+  avgRelevanceScore     Float?
+  avgResponseTime       Float?   // minutes to reply
+  topKeywords           Json?    // Array of {keyword, count}
+  topIntents            Json?    // {QUESTION: 10, COMPLAINT: 5, ...}
+
+  createdAt DateTime @default(now())
+
+  @@unique([date, platform])
+  @@index([date])
+}
+
+// ─── Leads & CRM ─────────────────────────────────────
+
+enum LeadStatus {
+  NEW
+  ENGAGED
+  WARM
+  HOT
+  CONVERTED
+  LOST
+}
+
+enum LeadSource {
+  REDDIT
+  TWITTER
+  LINKEDIN
+  HN
+  INBOUND
+  REFERRAL
+}
+
+model Lead {
+  id              String     @id @default(cuid())
+  // Identity
+  name            String?
+  handle          String?
+  email           String?
+  platform        Platform?
+  externalProfileUrl String?
+  avatarUrl       String?
+  // Enrichment
+  company         String?
+  jobTitle        String?
+  companySize     String?
+  linkedinUrl     String?
+  twitterUrl      String?
+  bio             String?    @db.Text
+  location        String?
+  // Scoring
+  score           Int        @default(0)
+  scoreBreakdown  Json?      // {engagement: 20, intent: 30, ...}
+  status          LeadStatus @default(NEW)
+  source          LeadSource
+  // Tracking
+  firstSeenAt     DateTime   @default(now())
+  lastSeenAt      DateTime   @default(now())
+  lastEngagedAt   DateTime?
+  totalInteractions Int      @default(0)
+  tags            Json       @default("[]")
+  notes           String?    @db.Text
+
+  interactions    LeadInteraction[]
+  conversions     ConversionEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([platform, handle])
+  @@index([status])
+  @@index([score])
+  @@index([lastEngagedAt])
+}
+
+model LeadInteraction {
+  id              String   @id @default(cuid())
+  leadId          String
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  replyId         String?
+  platform        Platform
+  interactionType String   // our_reply, their_response, follow, mention
+  content         String?  @db.Text
+  sentiment       String?  // positive, neutral, negative
+  postUrl         String?
+
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@index([createdAt])
+}
+
+// ─── Competitor Intelligence ─────────────────────────
+
+model Competitor {
+  id              String   @id @default(cuid())
+  name            String
+  domain          String?
+  description     String?  @db.Text
+  keywords        Json     @default("[]") // Keywords to track for this competitor
+  socialHandles   Json     @default("{}") // {twitter: "@...", reddit: "u/..."}
+  isActive        Boolean  @default(true)
+
+  mentions        CompetitorMention[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CompetitorMention {
+  id              String     @id @default(cuid())
+  competitorId    String
+  competitor      Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  platform        Platform
+  externalPostId  String
+  externalUrl     String
+  authorHandle    String?
+  content         String     @db.Text
+  sentiment       String?    // positive, neutral, negative
+  intentType      IntentType?
+  isOpportunity   Boolean    @default(false) // Did we engage?
+  ourReplyId      String?
+
+  discoveredAt DateTime @default(now())
+
+  @@unique([platform, externalPostId])
+  @@index([competitorId])
+  @@index([discoveredAt])
+  @@index([sentiment])
+}
+
+model ShareOfVoice {
+  id              String   @id @default(cuid())
+  date            DateTime @db.Date
+  platform        Platform?
+  ourMentions     Int      @default(0)
+  competitorData  Json     // {competitorId: mentionCount, ...}
+  totalMarketMentions Int  @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@unique([date, platform])
+  @@index([date])
+}
+
+// ─── Influencers ─────────────────────────────────────
+
+enum InfluencerTier {
+  NANO        // <1K followers
+  MICRO       // 1K-10K
+  MID         // 10K-100K
+  MACRO       // 100K-1M
+  MEGA        // 1M+
+}
+
+model Influencer {
+  id              String         @id @default(cuid())
+  name            String
+  handle          String
+  platform        Platform
+  externalProfileUrl String?
+  avatarUrl       String?
+  // Metrics
+  followerCount   Int            @default(0)
+  engagementRate  Float?
+  tier            InfluencerTier @default(NANO)
+  // Profile
+  bio             String?        @db.Text
+  niche           String?
+  topics          Json           @default("[]")
+  // Relationship
+  relationshipScore Int          @default(0)
+  ourInteractions Int            @default(0)
+  theirResponses  Int            @default(0)
+  lastInteractionAt DateTime?
+  isAmbassador    Boolean        @default(false)
+  tags            Json           @default("[]")
+  notes           String?        @db.Text
+
+  interactions    InfluencerInteraction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([platform, handle])
+  @@index([tier])
+  @@index([relationshipScore])
+  @@index([followerCount])
+}
+
+model InfluencerInteraction {
+  id              String     @id @default(cuid())
+  influencerId    String
+  influencer      Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  replyId         String?
+  platform        Platform
+  interactionType String     // our_reply, their_response, mention, collab
+  postUrl         String?
+  content         String?    @db.Text
+  theyResponded   Boolean    @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([influencerId])
+  @@index([createdAt])
+}
+
+// ─── Autopilot ───────────────────────────────────────
+
+model AutopilotConfig {
+  id                    String   @id @default(cuid())
+  isEnabled             Boolean  @default(false)
+  // Auto-drafting
+  autoDraftEnabled      Boolean  @default(false)
+  autoDraftMinScore     Int      @default(70)
+  autoDraftIntents      Json     @default("[\"QUESTION\"]")
+  autoDraftPlatforms    Json     @default("[\"REDDIT\", \"HN\"]")
+  maxDraftsPerDay       Int      @default(20)
+  // Auto-scheduling
+  autoScheduleEnabled   Boolean  @default(false)
+  scheduleDelayMinutes  Int      @default(30)
+  // Posting windows (times in UTC)
+  postingWindows        Json     @default("[]") // [{day: 1, startHour: 9, endHour: 17}, ...]
+  // Limits
+  maxRepliesPerHour     Int      @default(5)
+  maxRepliesPerDay      Int      @default(50)
+  // Current stats
+  draftsToday           Int      @default(0)
+  repliesSentToday      Int      @default(0)
+  lastResetAt           DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AutopilotQueue {
+  id              String   @id @default(cuid())
+  discoveredPostId String
+  priority        Int      @default(50)
+  scheduledFor    DateTime?
+  status          String   @default("pending") // pending, drafted, approved, sent, skipped
+  draftContent    String?  @db.Text
+  skipReason      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([priority])
+}
+
+// ─── Growth Gamification ─────────────────────────────
+
+model GrowthScore {
+  id              String   @id @default(cuid())
+  userId          String
+  date            DateTime @db.Date
+  repliesSent     Int      @default(0)
+  engagementsEarned Int    @default(0)
+  conversions     Int      @default(0)
+  streak          Int      @default(0)
+  dailyScore      Int      @default(0)
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}
+
+model Achievement {
+  id              String   @id @default(cuid())
+  userId          String
+  achievementType String   // first_reply, streak_7, conversions_10, etc.
+  unlockedAt      DateTime @default(now())
+  metadata        Json?
+
+  @@unique([userId, achievementType])
+  @@index([userId])
+}
