@@ -27,10 +27,13 @@ const sizes: Record<string, string> = {
 };
 
 export function PlatformIcon({ platform, size = "md", className = "" }: PlatformIconProps) {
+  const label = PLATFORM_LABELS[platform] || platform;
   return (
     <span
       className={`inline-flex items-center justify-center rounded font-bold ${sizes[size]} ${colors[platform] || "bg-gray-200"} ${className}`}
-      title={PLATFORM_LABELS[platform] || platform}
+      role="img"
+      aria-label={label}
+      title={label}
     >
       {icons[platform] || "?"}
     </span>

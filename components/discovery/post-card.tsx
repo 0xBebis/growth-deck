@@ -55,18 +55,29 @@ export function PostCard({ post }: PostCardProps) {
           <button
             onClick={() => hasBody && setIsExpanded(!isExpanded)}
             className={`text-left w-full ${hasBody ? "cursor-pointer" : "cursor-default"}`}
+            aria-expanded={hasBody ? isExpanded : undefined}
+            aria-controls={hasBody ? `post-body-${post.id}` : undefined}
+            onKeyDown={(e) => {
+              if (hasBody && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                setIsExpanded(!isExpanded);
+              }
+            }}
           >
             <h3 className="text-sm font-medium leading-relaxed">
               {title}
               {hasBody && (
-                <span className="ml-2 text-xs text-muted-foreground">
+                <span className="ml-2 text-xs text-muted-foreground" aria-hidden="true">
                   {isExpanded ? "▼" : "▶"}
                 </span>
               )}
             </h3>
           </button>
           {isExpanded && hasBody && (
-            <p className="mt-2 text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+            <p
+              id={`post-body-${post.id}`}
+              className="mt-2 text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap"
+            >
               {body}
             </p>
           )}

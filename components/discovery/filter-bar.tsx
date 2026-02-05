@@ -57,26 +57,39 @@ export function FilterBar({ currentFilters }: FilterBarProps) {
     [router, searchParams]
   );
 
+  const filterLabels: Record<string, string> = {
+    platform: "Filter by platform",
+    intent: "Filter by intent type",
+    audience: "Filter by audience",
+    sort: "Sort posts by",
+  };
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Feed filters">
       {[
         { key: "platform", options: platforms, current: currentFilters.platform },
         { key: "intent", options: intents, current: currentFilters.intent },
         { key: "audience", options: audiences, current: currentFilters.audience },
         { key: "sort", options: sorts, current: currentFilters.sort || "recency" },
       ].map(({ key, options, current }) => (
-        <select
-          key={key}
-          value={current || ""}
-          onChange={(e) => updateFilter(key, e.target.value)}
-          className="rounded-lg glass border-border/50 bg-transparent px-3 py-1.5 text-sm text-foreground transition-smooth hover:bg-white/5 focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer"
-        >
-          {options.map((opt) => (
-            <option key={opt.value} value={opt.value} className="bg-popover text-popover-foreground">
-              {opt.label}
-            </option>
-          ))}
-        </select>
+        <div key={key}>
+          <label htmlFor={`filter-${key}`} className="sr-only">
+            {filterLabels[key]}
+          </label>
+          <select
+            id={`filter-${key}`}
+            value={current || ""}
+            onChange={(e) => updateFilter(key, e.target.value)}
+            aria-label={filterLabels[key]}
+            className="rounded-lg glass border-border/50 bg-transparent px-3 py-2.5 text-sm text-foreground transition-smooth hover:bg-white/5 focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer min-h-[44px]"
+          >
+            {options.map((opt) => (
+              <option key={opt.value} value={opt.value} className="bg-popover text-popover-foreground">
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
       ))}
     </div>
   );
