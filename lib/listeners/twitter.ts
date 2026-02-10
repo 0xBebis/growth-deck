@@ -59,7 +59,7 @@ const EXCLUDE_TERMS = [
   "-is:retweet", // Exclude retweets
 ];
 
-// Core topic keywords
+// Core topic keywords (used in API queries)
 const TOPIC_KEYWORDS = [
   "trading bot",
   "algo trading",
@@ -72,6 +72,63 @@ const TOPIC_KEYWORDS = [
   "AI finance",
   "AI stock",
   "machine learning trading",
+];
+
+// Keywords that MUST be present in content for a post to be saved
+// These are more specific than query keywords to filter out false positives
+const REQUIRED_FINANCE_KEYWORDS = [
+  // Trading-specific
+  "trading bot",
+  "trading algorithm",
+  "algo trading",
+  "algotrading",
+  "algorithmic trading",
+  "automated trading",
+  "quant trading",
+  "quantitative trading",
+  "systematic trading",
+  "high frequency trading",
+  "hft",
+  "market making",
+  // AI + Finance combinations
+  "ai trading",
+  "gpt trading",
+  "llm trading",
+  "machine learning trading",
+  "ml trading",
+  "ai finance",
+  "ai stock",
+  // Platforms/tools
+  "backtest",
+  "backtesting",
+  "openbb",
+  "numerai",
+  "alpaca api",
+  "trading api",
+  "polymarket",
+  "prediction market",
+  // Finance terms
+  "trading strategy",
+  "trading system",
+  "portfolio optimization",
+  "trade execution",
+  "order book",
+  "crypto trading",
+  "forex trading",
+  "options trading",
+  "futures trading",
+  // Community signals
+  "#algotrading",
+  "#quanttrading",
+  "#tradingbot",
+  "#aitrading",
+  "#fintwit",
+  // Products/companies in space
+  "trade automation",
+  "automate trades",
+  "trading signals",
+  "financial ai",
+  "fintech ai",
 ];
 
 async function getLastFetchTimestamp(): Promise<number> {
@@ -183,8 +240,20 @@ export async function runTwitterListener(): Promise<ListenerResult[]> {
         const content = tweet.full_text || tweet.text || "";
         if (!content) continue;
 
+        const contentLower = content.toLowerCase();
+
+        // CRITICAL: Require at least one finance keyword to filter false positives
+        // The API query might return tweets that matched intent phrases but aren't about trading
+        const hasFinanceKeyword = REQUIRED_FINANCE_KEYWORDS.some((kw) =>
+          contentLower.includes(kw.toLowerCase())
+        );
+
+        if (!hasFinanceKeyword) {
+          continue; // Skip tweets without actual finance/trading content
+        }
+
         const matchedKeywords = allKeywords.filter((kw) =>
-          content.toLowerCase().includes(kw.toLowerCase())
+          contentLower.includes(kw.toLowerCase())
         );
 
         results.push({
