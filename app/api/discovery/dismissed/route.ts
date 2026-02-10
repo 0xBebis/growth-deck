@@ -1,15 +1,15 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  withAuth,
+  parseQuery,
+  parseBody,
+  dismissedQuerySchema,
+  restorePostsSchema,
+} from "@/lib/api";
 
 // GET /api/discovery/dismissed - List all dismissed posts
-export async function GET(request: Request) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { searchParams } = new URL(request.url);
-  const search = searchParams.get("search") || "";
-  const platform = searchParams.get("platform");
+export const GET = withAuth(async (session, request) => {
+  const { search, platform } = parseQuery(request, dismissedQuerySchema);
 
   const posts = await prisma.discoveredPost.findMany({
     where: {
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
           { authorName: { contains: search, mode: "insensitive" } },
         ],
       }),
-      ...(platform && { platform: platform as "X" | "LINKEDIN" | "REDDIT" | "HN" }),
+      ...(platform && { platform }),
     },
     orderBy: { updatedAt: "desc" },
     include: {
@@ -31,42 +31,35 @@ export async function GET(request: Request) {
     },
   });
 
-  return NextResponse.json(posts);
-}
+  return posts;
+});
 
-// POST /api/discovery/dismissed - Restore all dismissed posts
-export async function POST(request: Request) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+// POST /api/discovery/dismissed - Restore dismissed posts
+export const POST = withAuth(async (session, request) => {
+  const { ids } = await parseBody(request, restorePostsSchema);
 
-  const body = await request.json();
-
-  // Restore specific posts or all
-  if (body.ids && Array.isArray(body.ids)) {
+  if (ids && ids.length > 0) {
     // Restore specific posts
     const result = await prisma.discoveredPost.updateMany({
       where: {
-        id: { in: body.ids },
+        id: { in: ids },
         status: "DISMISSED",
       },
       data: { status: "NEW" },
     });
-    return NextResponse.json({ restored: result.count });
+    return { restored: result.count };
   } else {
     // Restore all dismissed posts
     const result = await prisma.discoveredPost.updateMany({
       where: { status: "DISMISSED" },
       data: { status: "NEW" },
     });
-    return NextResponse.json({ restored: result.count });
+    return { restored: result.count };
   }
-}
+});
 
 // DELETE /api/discovery/dismissed - Permanently delete dismissed posts
-export async function DELETE(request: Request) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
+export const DELETE = withAuth(async (session, request) => {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
 
@@ -75,12 +68,12 @@ export async function DELETE(request: Request) {
     await prisma.discoveredPost.delete({
       where: { id, status: "DISMISSED" },
     });
-    return NextResponse.json({ deleted: 1 });
+    return { deleted: 1 };
   } else {
     // Delete all dismissed posts permanently
     const result = await prisma.discoveredPost.deleteMany({
       where: { status: "DISMISSED" },
     });
-    return NextResponse.json({ deleted: result.count });
+    return { deleted: result.count };
   }
-}
+});

@@ -1,24 +1,75 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  Search,
+  ClipboardList,
+  BarChart3,
+  Target,
+  Radio,
+  Star,
+  Bot,
+  BookOpen,
+  Settings,
+  type LucideIcon,
+} from "lucide-react";
 
-const navItems = [
-  { href: "/discover", label: "Discover", icon: "🔍", description: "Find engagement opportunities" },
-  { href: "/queue", label: "Queue", icon: "📋", description: "Manage reply drafts" },
-  { href: "/analytics", label: "Analytics", icon: "📊", description: "Track engagement and ROI" },
-  { href: "/leads", label: "Leads", icon: "🎯", description: "CRM and lead scoring" },
-  { href: "/radar", label: "Radar", icon: "📡", description: "Competitor intelligence" },
-  { href: "/influencers", label: "Influencers", icon: "⭐", description: "Relationship tracking" },
-  { href: "/autopilot", label: "Autopilot", icon: "🤖", description: "Automated engagement" },
-  { href: "/playbook", label: "Playbook", icon: "📖", description: "Writing guides and templates" },
-  { href: "/settings", label: "Settings", icon: "⚙️", description: "Configure your account" },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  description: string;
+  shortcut?: string;
+}
+
+const navItems: NavItem[] = [
+  { href: "/discover", label: "Discover", icon: Search, description: "Find engagement opportunities", shortcut: "D" },
+  { href: "/queue", label: "Queue", icon: ClipboardList, description: "Manage reply drafts", shortcut: "Q" },
+  { href: "/analytics", label: "Analytics", icon: BarChart3, description: "Track engagement and ROI", shortcut: "A" },
+  { href: "/leads", label: "Leads", icon: Target, description: "CRM and lead scoring", shortcut: "L" },
+  { href: "/radar", label: "Radar", icon: Radio, description: "Competitor intelligence", shortcut: "R" },
+  { href: "/influencers", label: "Influencers", icon: Star, description: "Relationship tracking", shortcut: "I" },
+  { href: "/autopilot", label: "Autopilot", icon: Bot, description: "Automated engagement" },
+  { href: "/playbook", label: "Playbook", icon: BookOpen, description: "Writing guides and templates", shortcut: "P" },
+  { href: "/settings", label: "Settings", icon: Settings, description: "Configure your account", shortcut: "," },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+
+  // Keyboard navigation shortcuts
+  const handleKeyboardNav = useCallback(
+    (e: KeyboardEvent) => {
+      // Only handle if not in input/textarea and Cmd/Ctrl is pressed
+      const target = e.target as HTMLElement;
+      const isInputFocused =
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable;
+
+      if (isInputFocused || !e.metaKey) return;
+
+      const key = e.key.toUpperCase();
+      const item = navItems.find(
+        (nav) => nav.shortcut?.toUpperCase() === key
+      );
+
+      if (item) {
+        e.preventDefault();
+        router.push(item.href);
+      }
+    },
+    [router]
+  );
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyboardNav);
+    return () => document.removeEventListener("keydown", handleKeyboardNav);
+  }, [handleKeyboardNav]);
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
@@ -122,6 +173,7 @@ export function Sidebar() {
         <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Main">
           {navItems.map((item) => {
             const isActive = pathname.startsWith(item.href);
+            const Icon = item.icon;
             return (
               <Link
                 key={item.href}
@@ -141,10 +193,20 @@ export function Sidebar() {
                 {isActive && (
                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full shadow-[0_0_8px_rgba(139,92,246,0.5)]" />
                 )}
-                <span className={`text-lg transition-transform duration-200 ${isActive ? "" : "group-hover:scale-110"}`} aria-hidden="true">
-                  {item.icon}
-                </span>
-                <span className="tracking-[-0.01em]">{item.label}</span>
+                <Icon
+                  className={`h-5 w-5 shrink-0 transition-transform duration-200 ${isActive ? "text-primary" : "group-hover:scale-110"}`}
+                  aria-hidden="true"
+                  strokeWidth={1.75}
+                />
+                <span className="tracking-[-0.01em] flex-1">{item.label}</span>
+                {item.shortcut && (
+                  <kbd
+                    className="hidden md:inline-flex h-5 min-w-5 items-center justify-center rounded bg-white/[0.06] px-1.5 text-[10px] font-medium text-zinc-500 group-hover:bg-white/10 group-hover:text-zinc-400"
+                    aria-hidden="true"
+                  >
+                    {item.shortcut}
+                  </kbd>
+                )}
                 <span id={`nav-desc-${item.label.toLowerCase()}`} className="sr-only">
                   {item.description}
                 </span>
@@ -153,10 +215,13 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Mobile keyboard hint */}
-        <div className="border-t border-border/50 p-3 md:hidden">
-          <p className="text-xs text-muted-foreground text-center">
+        {/* Keyboard hints */}
+        <div className="border-t border-border/50 p-3">
+          <p className="text-xs text-muted-foreground text-center md:hidden">
             Press <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">Esc</kbd> to close
+          </p>
+          <p className="hidden md:block text-[10px] text-zinc-600 text-center">
+            <kbd className="px-1 py-0.5 bg-white/5 rounded">Cmd</kbd> + key to navigate
           </p>
         </div>
       </aside>

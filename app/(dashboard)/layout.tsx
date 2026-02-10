@@ -3,6 +3,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { MetricsBar } from "@/components/layout/metrics-bar";
 import { SkipLink } from "@/components/layout/skip-link";
+import { DashboardClient } from "@/components/layout/dashboard-client";
 
 export default function DashboardLayout({
   children,
@@ -11,17 +12,19 @@ export default function DashboardLayout({
 }) {
   return (
     <SessionProvider>
-      <SkipLink />
-      <div className="flex min-h-dvh gradient-mesh">
-        <Sidebar />
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <Header />
-          <MetricsBar />
-          <main id="main-content" className="flex-1 overflow-auto p-4 md:p-6 safe-bottom" tabIndex={-1}>
-            {children}
-          </main>
+      <DashboardClient>
+        <SkipLink />
+        <div className="flex min-h-dvh gradient-mesh">
+          <Sidebar />
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <Header />
+            <MetricsBar />
+            <main id="main-content" className="flex-1 overflow-auto p-4 md:p-6 safe-bottom" tabIndex={-1}>
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
+      </DashboardClient>
     </SessionProvider>
   );
 }

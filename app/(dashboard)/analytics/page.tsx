@@ -1,6 +1,26 @@
+import dynamic from "next/dynamic";
 import { prisma } from "@/lib/prisma";
-import { AnalyticsContainer } from "@/components/analytics/analytics-container";
 import { subDays, startOfDay, format } from "date-fns";
+
+const AnalyticsContainer = dynamic(
+  () => import("@/components/analytics/analytics-container").then((mod) => mod.AnalyticsContainer),
+  {
+    loading: () => (
+      <div className="space-y-6 p-6">
+        <div className="h-8 w-36 animate-pulse rounded bg-zinc-800" />
+        <div className="grid gap-4 md:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-28 animate-pulse rounded-lg bg-zinc-800" />
+          ))}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="h-64 animate-pulse rounded-lg bg-zinc-800" />
+          <div className="h-64 animate-pulse rounded-lg bg-zinc-800" />
+        </div>
+      </div>
+    ),
+  }
+);
 
 export default async function AnalyticsPage() {
   const now = new Date();

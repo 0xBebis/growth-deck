@@ -1,5 +1,28 @@
+import dynamic from "next/dynamic";
 import { prisma } from "@/lib/prisma";
-import { FeedContainer } from "@/components/discovery/feed-container";
+
+const FeedContainer = dynamic(
+  () => import("@/components/discovery/feed-container").then((mod) => mod.FeedContainer),
+  {
+    loading: () => (
+      <div className="space-y-4 p-6">
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-40 animate-pulse rounded bg-zinc-800" />
+          <div className="flex gap-2">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-8 w-24 animate-pulse rounded bg-zinc-800" />
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="h-20 animate-pulse rounded-lg bg-zinc-800" />
+          ))}
+        </div>
+      </div>
+    ),
+  }
+);
 
 export default async function DiscoverPage({
   searchParams,

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { checkDraftQuality } from "@/lib/drafting/prompts";
+import { getPlatformStyle, getPlatformIcon } from "@/lib/utils/platform";
+import { getTimeAgo } from "@/lib/utils/time";
 
 interface QueueCardProps {
   reply: {
@@ -321,35 +323,3 @@ export function QueueCard({
   );
 }
 
-function getPlatformStyle(platform: string) {
-  const styles: Record<string, string> = {
-    X: "bg-zinc-700 text-white",
-    LINKEDIN: "bg-blue-600 text-white",
-    REDDIT: "bg-orange-600 text-white",
-    HN: "bg-orange-500 text-white",
-  };
-  return styles[platform] || "bg-zinc-600 text-white";
-}
-
-function getPlatformIcon(platform: string) {
-  const icons: Record<string, string> = {
-    X: "𝕏",
-    LINKEDIN: "in",
-    REDDIT: "r/",
-    HN: "Y",
-  };
-  return icons[platform] || "?";
-}
-
-function getTimeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  const weeks = Math.floor(days / 7);
-  return `${weeks}w`;
-}

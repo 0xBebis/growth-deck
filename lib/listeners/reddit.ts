@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/utils/encryption";
+import { isLowValueContent, scoreRelevance, getMatchedKeywords } from "@/lib/content/filters";
 import type { ListenerResult } from "./base";
 
 interface RedditCredentials {
@@ -79,13 +80,6 @@ const RELEVANCE_KEYWORDS = [
   "strategy",
 ];
 
-// Exclude low-value content
-const EXCLUDE_PATTERNS = [
-  /\b(hiring|job posting|we're looking for|career|vacancy)\b/i,
-  /\b(check out my course|enroll now|limited spots|sign up)\b/i,
-  /\b(affiliate|promo code|discount|use code)\b/i,
-];
-
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 async function authenticate(credentials: RedditCredentials): Promise<string> {
@@ -124,27 +118,6 @@ async function authenticate(credentials: RedditCredentials): Promise<string> {
     expiresAt: Date.now() + (data.expires_in - 60) * 1000,
   };
   return cachedToken.token;
-}
-
-function isLowValueContent(text: string): boolean {
-  return EXCLUDE_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-function scoreRelevance(text: string): number {
-  const lowerText = text.toLowerCase();
-  let score = 0;
-  for (const keyword of RELEVANCE_KEYWORDS) {
-    if (lowerText.includes(keyword.toLowerCase())) {
-      score++;
-    }
-  }
-  return score;
-}
-
-function getMatchedKeywords(text: string, extraKeywords: string[] = []): string[] {
-  const lowerText = text.toLowerCase();
-  const allKeywords = [...RELEVANCE_KEYWORDS, ...extraKeywords];
-  return allKeywords.filter((kw) => lowerText.includes(kw.toLowerCase()));
 }
 
 // Authenticated search (higher rate limits)
@@ -208,16 +181,15 @@ export async function runRedditListener(): Promise<ListenerResult[]> {
   let token: string | null = null;
   if (account?.credentials) {
     try {
-      let credentials: RedditCredentials;
-      try {
-        credentials = JSON.parse(decrypt(account.credentials));
-      } catch {
-        credentials = JSON.parse(account.credentials);
-      }
+      const decrypted = decrypt(account.credentials);
+      const credentials: RedditCredentials = JSON.parse(decrypted);
       token = await authenticate(credentials);
       console.log("Reddit: Using authenticated API");
     } catch (error) {
-      console.warn("Reddit auth failed, falling back to public API:", error);
+      // Log error but don't expose credentials - fall back to public API
+      console.warn("Reddit auth failed (credentials may need re-encryption), falling back to public API:",
+        error instanceof Error ? error.message : "Unknown error"
+      );
     }
   } else {
     console.log("Reddit: No credentials found, using public API");
@@ -259,11 +231,12 @@ export async function runRedditListener(): Promise<ListenerResult[]> {
         // Skip low-value content (job posts, promos)
         if (isLowValueContent(content)) continue;
 
-        // Check relevance
-        const relevanceScore = scoreRelevance(content);
+        // Check relevance using local + user keywords
+        const allKeywords = [...RELEVANCE_KEYWORDS, ...userPhrases];
+        const relevanceScore = scoreRelevance(content, allKeywords);
         if (relevanceScore === 0) continue;
 
-        const matchedKeywords = getMatchedKeywords(content, userPhrases);
+        const matchedKeywords = getMatchedKeywords(content, allKeywords);
 
         results.push({
           platform: "REDDIT",
@@ -298,52 +271,42 @@ export async function runRedditListener(): Promise<ListenerResult[]> {
 export async function saveDiscoveredPosts(
   results: ListenerResult[]
 ): Promise<number> {
-  let saved = 0;
-  for (const result of results) {
-    try {
-      await prisma.discoveredPost.upsert({
-        where: {
-          platform_externalId: {
-            platform: result.platform,
-            externalId: result.externalId,
-          },
-        },
-        update: {},
-        create: {
-          platform: result.platform,
-          externalId: result.externalId,
-          externalUrl: result.externalUrl,
-          authorName: result.authorName,
-          authorHandle: result.authorHandle,
-          content: result.content,
-          threadContext: result.threadContext,
-          matchedKeywords: result.matchedKeywords.join(", "),
-          discoveredAt: result.discoveredAt,
-        },
-      });
-      saved++;
-    } catch (error) {
-      // P2002 = unique constraint violation (expected for duplicates), log others
-      const prismaError = error as { code?: string };
-      if (prismaError.code !== "P2002") {
-        console.error(`Failed to save post ${result.externalId}:`, error);
-      }
-    }
-  }
+  if (results.length === 0) return 0;
 
-  // Batch keyword match count updates: aggregate counts first, then update once per keyword
+  // Batch insert with skipDuplicates - single query instead of N queries
+  const createResult = await prisma.discoveredPost.createMany({
+    data: results.map((result) => ({
+      platform: result.platform,
+      externalId: result.externalId,
+      externalUrl: result.externalUrl,
+      authorName: result.authorName,
+      authorHandle: result.authorHandle,
+      content: result.content,
+      threadContext: result.threadContext,
+      matchedKeywords: result.matchedKeywords.join(", "),
+      discoveredAt: result.discoveredAt,
+    })),
+    skipDuplicates: true,
+  });
+
+  // Batch keyword match count updates in a transaction
   const keywordCounts = new Map<string, number>();
   for (const result of results) {
     for (const kw of result.matchedKeywords) {
       keywordCounts.set(kw, (keywordCounts.get(kw) ?? 0) + 1);
     }
   }
-  for (const [phrase, count] of keywordCounts) {
-    await prisma.keyword.updateMany({
-      where: { phrase },
-      data: { postsMatched: { increment: count } },
-    });
+
+  if (keywordCounts.size > 0) {
+    await prisma.$transaction(
+      Array.from(keywordCounts.entries()).map(([phrase, count]) =>
+        prisma.keyword.updateMany({
+          where: { phrase },
+          data: { postsMatched: { increment: count } },
+        })
+      )
+    );
   }
 
-  return saved;
+  return createResult.count;
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isLowValueContent, getMatchedKeywords, stripHtmlTags } from "@/lib/content/filters";
 import type { ListenerResult } from "./base";
 
 interface HNHit {
@@ -46,12 +47,6 @@ const RELEVANCE_KEYWORDS = [
   "LLM", "GPT", "neural network", "reinforcement learning",
 ];
 
-// Filter out low-value HN content
-const EXCLUDE_PATTERNS = [
-  /\b(hiring|who's hiring|job|career)\b/i,
-  /\b(ask hn: what|tell hn: i)\b/i,
-];
-
 async function getLastFetchTimestamp(): Promise<number> {
   // Use the most recent HN DiscoveredPost's discoveredAt as the watermark,
   // falling back to 1 hour ago if no posts exist yet.
@@ -81,16 +76,6 @@ async function searchHN(
 
   const data: HNSearchResponse = await response.json();
   return data.hits;
-}
-
-function isLowValueContent(text: string): boolean {
-  return EXCLUDE_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-function getMatchedKeywords(text: string, extraKeywords: string[] = []): string[] {
-  const lowerText = text.toLowerCase();
-  const allKeywords = [...RELEVANCE_KEYWORDS, ...extraKeywords];
-  return allKeywords.filter((kw) => lowerText.includes(kw.toLowerCase()));
 }
 
 export async function runHNListener(): Promise<ListenerResult[]> {
@@ -126,11 +111,12 @@ export async function runHNListener(): Promise<ListenerResult[]> {
           if (!content) continue;
 
           // Strip HTML and check for low-value content
-          const plainContent = content.replace(/<[^>]+>/g, "");
+          const plainContent = stripHtmlTags(content);
           if (isLowValueContent(plainContent)) continue;
 
-          // Check relevance
-          const matchedKeywords = getMatchedKeywords(plainContent, userPhrases);
+          // Check relevance using local + user keywords
+          const allKeywords = [...RELEVANCE_KEYWORDS, ...userPhrases];
+          const matchedKeywords = getMatchedKeywords(plainContent, allKeywords);
           if (matchedKeywords.length === 0) continue;
 
           results.push({

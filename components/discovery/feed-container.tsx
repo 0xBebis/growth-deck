@@ -6,6 +6,9 @@ import { PostRow } from "./post-row";
 import { CommandPalette } from "./command-palette";
 import { TrendsPanel } from "./trends-panel";
 import { FilterBar } from "./filter-bar";
+import { ScrapeConfigPanel } from "./scrape-config-panel";
+import { FOCUS_RESULTS_KEY } from "@/components/layout/dashboard-client";
+import type { FocusScrapeResult } from "./focus-scrape-modal";
 
 interface Post {
   id: string;
@@ -44,9 +47,43 @@ export function FeedContainer({ posts, currentFilters, trends }: FeedContainerPr
   const router = useRouter();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [focusResults, setFocusResults] = useState<FocusScrapeResult[]>([]);
+  const [showFocusResults, setShowFocusResults] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const selectedPost = posts[selectedIndex];
+
+  // Load focus scrape results from sessionStorage
+  useEffect(() => {
+    const loadFocusResults = () => {
+      try {
+        const stored = sessionStorage.getItem(FOCUS_RESULTS_KEY);
+        if (stored) {
+          const results = JSON.parse(stored) as FocusScrapeResult[];
+          setFocusResults(results);
+          setShowFocusResults(true);
+          // Clear from storage after loading
+          sessionStorage.removeItem(FOCUS_RESULTS_KEY);
+        }
+      } catch {
+        // Invalid JSON, ignore
+      }
+    };
+
+    // Load on mount
+    loadFocusResults();
+
+    // Listen for focus scrape completion event
+    const handleFocusScrapeComplete = (e: CustomEvent<FocusScrapeResult[]>) => {
+      setFocusResults(e.detail);
+      setShowFocusResults(true);
+    };
+
+    window.addEventListener("focus-scrape-complete", handleFocusScrapeComplete as EventListener);
+    return () => {
+      window.removeEventListener("focus-scrape-complete", handleFocusScrapeComplete as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -147,6 +184,9 @@ export function FeedContainer({ posts, currentFilters, trends }: FeedContainerPr
       <div className="flex gap-6" ref={containerRef}>
         {/* Main content */}
         <div className="flex-1 min-w-0">
+          {/* Scrape Configuration Panel */}
+          <ScrapeConfigPanel />
+
           {/* Header */}
           <div className="sticky top-0 z-20 glass rounded-t-2xl border-b-0">
             <div className="flex items-center justify-between px-5 py-4">
@@ -214,10 +254,21 @@ export function FeedContainer({ posts, currentFilters, trends }: FeedContainerPr
             </div>
           </div>
 
+          {/* Focus Scrape Results */}
+          {focusResults.length > 0 && showFocusResults && (
+            <FocusResultsSection
+              results={focusResults}
+              onDismiss={() => {
+                setShowFocusResults(false);
+                setFocusResults([]);
+              }}
+            />
+          )}
+
           {/* Posts list */}
-          {posts.length === 0 ? (
+          {posts.length === 0 && focusResults.length === 0 ? (
             <EmptyState />
-          ) : (
+          ) : posts.length === 0 ? null : (
             <div className="divide-y divide-border/30">
               {posts.map((post, index) => (
                 <PostRow
@@ -339,4 +390,160 @@ function getPlatformColor(platform: string) {
     HN: "bg-orange-400",
   };
   return colors[platform] || "bg-gray-400";
+}
+
+function FocusResultsSection({
+  results,
+  onDismiss,
+}: {
+  results: FocusScrapeResult[];
+  onDismiss: () => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  // Group results by platform
+  const byPlatform = results.reduce((acc, r) => {
+    acc[r.platform] = (acc[r.platform] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const platformColors: Record<string, string> = {
+    X: "bg-zinc-700",
+    LINKEDIN: "bg-blue-600",
+    REDDIT: "bg-orange-600",
+    HN: "bg-orange-500",
+  };
+
+  const platformIcons: Record<string, string> = {
+    X: "\u{1D54F}",
+    LINKEDIN: "in",
+    REDDIT: "r/",
+    HN: "Y",
+  };
+
+  return (
+    <div className="mb-4 glass rounded-xl border border-primary/30 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border-b border-primary/20">
+        <div className="flex items-center gap-3">
+          <span className="text-lg">{"\u2728"}</span>
+          <div>
+            <span className="text-sm font-semibold text-foreground">Focus Scrape Results</span>
+            <span className="ml-2 text-xs text-muted-foreground">({results.length} posts)</span>
+          </div>
+          <div className="flex items-center gap-1.5 ml-2">
+            {Object.entries(byPlatform).map(([platform, count]) => (
+              <span
+                key={platform}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-medium text-white ${platformColors[platform] || "bg-gray-600"}`}
+              >
+                {platformIcons[platform] || "?"} {count}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-white/5 transition-colors"
+            aria-label={expanded ? "Collapse" : "Expand"}
+          >
+            <svg
+              className={`w-4 h-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <button
+            onClick={onDismiss}
+            className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-white/5 transition-colors"
+            aria-label="Dismiss"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Results list */}
+      {expanded && (
+        <div className="divide-y divide-border/30 max-h-96 overflow-y-auto">
+          {results.map((result) => (
+            <FocusResultRow key={`${result.platform}-${result.externalId}`} result={result} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FocusResultRow({ result }: { result: FocusScrapeResult }) {
+  const platformColors: Record<string, string> = {
+    X: "bg-zinc-700",
+    LINKEDIN: "bg-blue-600",
+    REDDIT: "bg-orange-600",
+    HN: "bg-orange-500",
+  };
+
+  const platformIcons: Record<string, string> = {
+    X: "\u{1D54F}",
+    LINKEDIN: "in",
+    REDDIT: "r/",
+    HN: "Y",
+  };
+
+  return (
+    <div className="p-4 hover:bg-white/[0.02] transition-colors">
+      <div className="flex items-start gap-3">
+        <div
+          className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0 ${platformColors[result.platform] || "bg-gray-600"}`}
+        >
+          {platformIcons[result.platform] || "?"}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm font-medium text-foreground">
+              {result.authorHandle || result.authorName || "Unknown"}
+            </span>
+            {result.threadContext && (
+              <span className="text-xs text-muted-foreground truncate">
+                {result.threadContext}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-foreground/80 line-clamp-2">{result.content}</p>
+          <div className="flex items-center gap-2 mt-2">
+            {result.matchedKeywords.slice(0, 2).map((kw) => (
+              <span
+                key={kw}
+                className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium"
+              >
+                {kw}
+              </span>
+            ))}
+          </div>
+        </div>
+        <a
+          href={result.externalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-white/5 transition-colors shrink-0"
+          aria-label="Open post"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+            />
+          </svg>
+        </a>
+      </div>
+    </div>
+  );
 }

@@ -10,7 +10,6 @@ interface SettingsTabsProps {
 const allTabs = [
   { key: "profile", label: "Profile", adminOnly: false },
   { key: "accounts", label: "Accounts", adminOnly: false },
-  { key: "keywords", label: "Keywords", adminOnly: false },
   { key: "llm", label: "LLM", adminOnly: true },
   { key: "slack", label: "Slack", adminOnly: true },
   { key: "team", label: "Team", adminOnly: true },

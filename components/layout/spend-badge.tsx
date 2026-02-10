@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 
 export function SpendBadge() {
   const [spend, setSpend] = useState<number | null>(null);
@@ -8,11 +9,8 @@ export function SpendBadge() {
   useEffect(() => {
     async function fetchSpend() {
       try {
-        const res = await fetch("/api/analytics/spend");
-        if (res.ok) {
-          const data = await res.json();
-          setSpend(data.monthlySpend ?? 0);
-        }
+        const data = await api.analytics.getSpend();
+        setSpend(data.monthlySpend ?? 0);
       } catch {
         // Silently fail — badge is non-critical
       }

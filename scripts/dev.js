@@ -88,32 +88,8 @@ if (fs.existsSync(lockFile)) {
 
 const nextDir = path.join(PROJECT_DIR, '.next');
 if (fs.existsSync(nextDir)) {
-  // Check cache size
-  let cacheSize = 0;
-  try {
-    const getSize = (dir) => {
-      let size = 0;
-      const items = fs.readdirSync(dir);
-      for (const item of items) {
-        const fullPath = path.join(dir, item);
-        const stat = fs.statSync(fullPath);
-        if (stat.isDirectory()) {
-          size += getSize(fullPath);
-        } else {
-          size += stat.size;
-        }
-      }
-      return size;
-    };
-    cacheSize = getSize(nextDir) / (1024 * 1024); // MB
-  } catch (e) {
-    // Ignore errors
-  }
-
-  if (cacheSize > 500) {
-    console.log(`   Cache is large (${Math.round(cacheSize)}MB), cleaning...`);
-    fs.rmSync(nextDir, { recursive: true, force: true });
-  }
+  console.log('   Removing .next cache for clean start...');
+  fs.rmSync(nextDir, { recursive: true, force: true });
 }
 
 console.log('   ✓ Caches cleaned');

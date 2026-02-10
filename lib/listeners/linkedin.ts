@@ -1,26 +1,14 @@
 import { prisma } from "@/lib/prisma";
+import { isLowValueContent, scoreRelevance, getMatchedKeywords } from "@/lib/content/filters";
+import {
+  extractLinkedInPostId,
+  extractLinkedInAuthorName,
+  extractLinkedInAuthorHandle,
+  extractLinkedInTimestamp,
+  buildLinkedInPostUrl,
+  type ApifyLinkedInPost,
+} from "@/lib/platforms/linkedin";
 import type { ListenerResult } from "./base";
-
-interface ApifyLinkedInPost {
-  urn?: string;
-  url?: string;
-  text?: string;
-  postedAtTimestamp?: number;
-  postedAtISO?: string;
-  authorFullName?: string;
-  authorProfileUrl?: string;
-  authorProfileId?: string;
-  // Some actor versions use nested structures
-  author?: {
-    name?: string;
-    profileUrl?: string;
-    profileId?: string;
-  };
-  postedAt?: {
-    date?: string;
-    timestamp?: number;
-  };
-}
 
 const APIFY_ACTOR = "supreme_coder~linkedin-post";
 const APIFY_API = `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items`;
@@ -64,65 +52,6 @@ const RELEVANCE_KEYWORDS = [
   "backtesting",
   "systematic trading",
 ];
-
-// Keywords that indicate low-value content (job posts, promotions)
-const EXCLUDE_PATTERNS = [
-  /hiring|we're looking for|job opportunity|open position|apply now/i,
-  /join our team|career|vacancy|remote position/i,
-  /webinar registration|sign up for|limited spots/i,
-  /\$\d+k|\d+% off|discount|promo code/i,
-];
-
-function extractPostId(post: ApifyLinkedInPost): string | null {
-  // Try URN first: "urn:li:activity:7123456789012345678"
-  if (post.urn) {
-    const match = post.urn.match(/(\d+)$/);
-    if (match) return match[1];
-  }
-  // Try URL: contains activity ID
-  if (post.url) {
-    const match = post.url.match(/activity[:-](\d+)/);
-    if (match) return match[1];
-  }
-  return null;
-}
-
-function extractAuthorName(post: ApifyLinkedInPost): string | null {
-  return post.authorFullName || post.author?.name || null;
-}
-
-function extractAuthorHandle(post: ApifyLinkedInPost): string | null {
-  return (
-    post.authorProfileUrl ||
-    post.author?.profileUrl ||
-    post.authorProfileId ||
-    post.author?.profileId ||
-    null
-  );
-}
-
-function extractTimestamp(post: ApifyLinkedInPost): Date {
-  if (post.postedAtTimestamp) return new Date(post.postedAtTimestamp);
-  if (post.postedAtISO) return new Date(post.postedAtISO);
-  if (post.postedAt?.timestamp) return new Date(post.postedAt.timestamp);
-  if (post.postedAt?.date) return new Date(post.postedAt.date);
-  return new Date();
-}
-
-function isLowValueContent(text: string): boolean {
-  return EXCLUDE_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-function scoreRelevance(text: string): number {
-  const lowerText = text.toLowerCase();
-  let score = 0;
-  for (const keyword of RELEVANCE_KEYWORDS) {
-    if (lowerText.includes(keyword.toLowerCase())) {
-      score++;
-    }
-  }
-  return score;
-}
 
 async function searchLinkedIn(query: string): Promise<ApifyLinkedInPost[]> {
   const token = process.env.APIFY_TOKEN;
@@ -179,7 +108,7 @@ export async function runLinkedInListener(): Promise<ListenerResult[]> {
       const posts = await searchLinkedIn(query);
 
       for (const post of posts) {
-        const postId = extractPostId(post);
+        const postId = extractLinkedInPostId(post);
         if (!postId || seen.has(postId)) continue;
         seen.add(postId);
 
@@ -190,24 +119,21 @@ export async function runLinkedInListener(): Promise<ListenerResult[]> {
         if (isLowValueContent(content)) continue;
 
         // Check relevance score
-        const relevanceScore = scoreRelevance(content);
+        const relevanceScore = scoreRelevance(content, allKeywords);
         if (relevanceScore === 0) continue; // Must match at least one keyword
 
-        const matchedKeywords = allKeywords.filter((kw) =>
-          content.toLowerCase().includes(kw.toLowerCase())
-        );
+        const matchedKeywords = getMatchedKeywords(content, allKeywords);
 
         results.push({
           platform: "LINKEDIN",
           externalId: postId,
-          // Always use the canonical feed URL format - Apify URLs are often malformed
-          externalUrl: `https://www.linkedin.com/feed/update/urn:li:activity:${postId}`,
-          authorName: extractAuthorName(post),
-          authorHandle: extractAuthorHandle(post),
+          externalUrl: buildLinkedInPostUrl(postId),
+          authorName: extractLinkedInAuthorName(post),
+          authorHandle: extractLinkedInAuthorHandle(post),
           content,
           threadContext: null,
           matchedKeywords,
-          discoveredAt: extractTimestamp(post),
+          discoveredAt: extractLinkedInTimestamp(post),
         });
       }
 

@@ -363,7 +363,7 @@ function InfluencerDetail({ influencer, onClose }: { influencer: Influencer; onC
             <div className="text-xs text-muted-foreground mb-2">Topics</div>
             <div className="flex flex-wrap gap-1.5">
               {topics.map((topic, i) => (
-                <span key={i} className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs">
+                <span key={i} className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs leading-none">
                   {topic}
                 </span>
               ))}

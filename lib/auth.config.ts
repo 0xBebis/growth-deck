@@ -19,8 +19,7 @@ export default {
     async session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (session.user as any).role = (user as any).role;
+        session.user.role = user.role ?? "CONTRIBUTOR";
       }
       return session;
     },
